@@ -1,0 +1,119 @@
+#!/bin/bash
+
+# Set constants
+TEMP_DIR="$HOME/tmp"
+INSTALL_DIR="/opt/firefox"
+LOCAL_DESKTOP_DIR="$HOME/.local/share/applications"
+SYSTEM_DESKTOP_DIR="/usr/share/applications"
+DESKTOP_FILE_NAME="firefox.desktop"
+DESKTOP_FILE_CONTENT="[Desktop Entry]
+Version=1.0
+Name=Firefox Web Browser
+Comment=Browse the World Wide Web
+GenericName=Web Browser
+Keywords=Internet;WWW;Browser;Web;Explorer
+Exec=$INSTALL_DIR/firefox %u
+Terminal=false
+X-MultipleArgs=false
+Type=Application
+Icon=$INSTALL_DIR/browser/chrome/icons/default/default128.png
+Categories=GNOME;GTK;Network;WebBrowser;
+MimeType=text/html;text/xml;application/xhtml+xml;application/xml;application/rss+xml;application/rdf+xml;image/gif;image/jpeg;image/png;x-scheme-handler/http;x-scheme-handler/https;x-scheme-handler/ftp;x-scheme-handler/chrome;video/webm;application/x-xpinstall;
+StartupNotify=true
+StartupWMClass=firefox
+NoDisplay=false"
+
+# Ensure necessary tools are installed
+command -v wget >/dev/null 2>&1 || { echo "wget is required but not installed. Exiting..."; exit 1; }
+command -v tar >/dev/null 2>&1 || { echo "tar is required but not installed. Exiting..."; exit 1; }
+
+# Ensure temporary directory exists
+mkdir -p "$TEMP_DIR"
+
+# Function to download and extract Firefox
+download_and_install_firefox() {
+    echo "Downloading the latest version of Mozilla Firefox..."
+    LATEST_FIREFOX_URL="https://download.mozilla.org/?product=firefox-latest&os=linux64&lang=en-US"
+    wget -O "$TEMP_DIR/firefox-latest.tar.bz2" "$LATEST_FIREFOX_URL"
+
+    if [ $? -ne 0 ]; then
+        echo "Failed to download Firefox. Exiting..."
+        exit 1
+    fi
+
+    echo "Removing old Firefox installation from $INSTALL_DIR..."
+    sudo rm -rf "$INSTALL_DIR"
+
+    echo "Extracting Firefox to $INSTALL_DIR..."
+    sudo mkdir -p "$INSTALL_DIR"
+    sudo tar -xjf "$TEMP_DIR/firefox-latest.tar.bz2" -C "$INSTALL_DIR" --strip-components=1
+
+    if [ $? -ne 0 ]; then
+        echo "Failed to extract Firefox. Exiting..."
+        exit 1
+    fi
+
+    echo "Creating symbolic link for Firefox..."
+    sudo ln -sf "$INSTALL_DIR/firefox" /usr/bin/firefox
+
+    echo "Cleaning up temporary files..."
+    rm -f "$TEMP_DIR/firefox-latest.tar.bz2"
+}
+
+# Function to create desktop entry
+create_desktop_entry() {
+    echo "Creating Firefox desktop entry..."
+
+    mkdir -p "$LOCAL_DESKTOP_DIR"
+
+    echo "$DESKTOP_FILE_CONTENT" > "$LOCAL_DESKTOP_DIR/$DESKTOP_FILE_NAME"
+    echo "$DESKTOP_FILE_CONTENT" | sudo tee "$SYSTEM_DESKTOP_DIR/$DESKTOP_FILE_NAME" >/dev/null
+
+    echo "Desktop entry created successfully."
+}
+
+# Function to purge Firefox installation
+purge_firefox() {
+    echo "Purging Firefox installation..."
+
+    echo "Removing Firefox directory: $INSTALL_DIR"
+    sudo rm -rf "$INSTALL_DIR"
+
+    echo "Removing desktop entries..."
+    rm -f "$LOCAL_DESKTOP_DIR/$DESKTOP_FILE_NAME"
+    sudo rm -f "$SYSTEM_DESKTOP_DIR/$DESKTOP_FILE_NAME"
+
+    echo "Firefox has been completely removed."
+}
+
+# Parse arguments
+if [[ "$1" == "--install" ]]; then
+    if [ -d "$INSTALL_DIR" ]; then
+        echo "Firefox is already installed in $INSTALL_DIR."
+        echo "Consider using --update to update the existing installation or --purge to remove it completely."
+        exit 1
+    fi
+    download_and_install_firefox
+    create_desktop_entry
+    echo "Firefox installation complete with desktop entry."
+
+elif [[ "$1" == "--update" ]]; then
+    if [ ! -d "$INSTALL_DIR" ]; then
+        echo "Firefox is not installed. Use --install to perform a fresh installation."
+        exit 1
+    fi
+    download_and_install_firefox
+    echo "Firefox update complete."
+
+elif [[ "$1" == "--purge" ]]; then
+    if [ ! -d "$INSTALL_DIR" ]; then
+        echo "Firefox is not installed. Nothing to purge."
+        exit 1
+    fi
+    purge_firefox
+
+else
+    echo "Usage: $0 [--install | --update | --purge]"
+    exit 1
+fi
+
